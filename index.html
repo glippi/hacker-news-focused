@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hacker News Focused</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/iconoir@6.0.0/css/iconoir.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f6f6ef;
+            color: #000;
+            position: relative;
+        }
+        #resourceDisplay {
+            text-align: center;
+            max-width: 80%;
+        }
+        a {
+            text-decoration: none;
+            color: #ff6600;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        #historyIcon {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 24px;
+            cursor: pointer;
+            display: none;
+        }
+        #historyDrawer {
+            position: fixed;
+            right: -300px;
+            top: 0;
+            width: 250px;
+            height: 100%;
+            background: white;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+            transition: right 0.3s;
+            overflow-y: auto;
+            z-index: 1001;
+        }
+        #historyDrawer.open {
+            right: 0;
+        }
+        #historyDrawer h3 {
+            padding: 0 0.5rem;
+        }
+        #historyDrawer ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #historyDrawer ul li {
+            font-size: 14px;
+            padding: 10px;
+            border-bottom: 1px dotted #eee;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .overlay.active {
+            display: block;
+        }
+        #wizard {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1002;
+            max-width: 80%;
+            width: 400px;
+        }
+        #wizard button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #ff6600;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #wizard button:hover {
+            background: #e55b00;
+        }
+        #credit {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #888;
+        }
+        @media (max-width: 768px) {
+    #resourceTitle {
+        font-size: 18px;
+    }
+    #resourceLink {
+        font-size: 16px;
+    }
+    #historyDrawer {
+        width: 200px;
+    }
+    #historyDrawer ul li {
+        font-size: 14px;
+    }
+    #wizard {
+        width: 90%;
+    }
+    #wizard h2 {
+        font-size: 20px;
+    }
+    #wizard p, #wizard ul li {
+        font-size: 14px;
+    }
+    #wizard button {
+        font-size: 14px;
+    }
+    #credit {
+        font-size: 10px;
+    }
+}
+    </style>
+</head>
+<body>
+
+<div id="resourceDisplay">
+    <h1 id="resourceTitle">Loading Hacker News...</h1>
+    <a id="resourceLink" href="#" target="_blank">Read More</a>
+</div>
+
+<div id="historyIcon" class="iconoir-folder"></div>
+
+<div id="historyDrawer">
+    <h3>History</h3>
+    <ul id="historyList"></ul>
+</div>
+
+<div class="overlay" id="overlay"></div>
+
+<div id="wizard" style="display: none;">
+    <h2>Welcome to Hacker News Viewer</h2>
+    <p>Here's how you can navigate:</p>
+    <ul>
+        <li>Use <strong>Arrow Left</strong> and <strong>Arrow Right</strong> keys to move between stories.</li>
+        <li>Press <strong>Enter</strong> to open the current story in a new tab.</li>
+    </ul>
+    <button id="startWizard">Got it!</button>
+</div>
+
+<div id="credit">made with ❤️ by <a href="https://www.glippi.dev">glippi</a> with <a href="https://x.com/grok">@grok</a></div>
+<script>
+let resources = [];
+let currentIndex = 0;
+let history = JSON.parse(localStorage.getItem('linkHistory')) || [];
+let hasShownWizard = localStorage.getItem('hasShownWizard');
+
+// Function to fetch top stories from Hacker News
+async function fetchHackerNewsTopStories() {
+    try {
+        const response = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json?print=pretty');
+        if (!response.ok) {
+            throw new Error('Failed to fetch top stories');
+        }
+        const storyIds = await response.json();
+        const storiesToFetch = storyIds.slice(0, 30);
+        const storyPromises = storiesToFetch.map(id => fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json?print=pretty`).then(res => res.json()));
+        resources = await Promise.all(storyPromises);
+        updateDisplay();
+    } catch (error) {
+        console.error('Error fetching Hacker News data:', error);
+        document.getElementById('resourceTitle').innerText = "Failed to load Hacker News stories";
+    }
+}
+
+// Function to update the display
+function updateDisplay() {
+    if (resources.length > 0) {
+        const currentResource = resources[currentIndex];
+        document.getElementById('resourceTitle').innerText = currentResource.title;
+        document.getElementById('resourceLink').href = currentResource.url || `https://news.ycombinator.com/item?id=${currentResource.id}`;
+    }
+    updateHistoryIcon();
+}
+
+// Function to update the history icon visibility
+function updateHistoryIcon() {
+    if (history.length > 0) {
+        document.getElementById('historyIcon').style.display = 'block';
+    } else {
+        document.getElementById('historyIcon').style.display = 'none';
+    }
+}
+
+// Function to add to history
+function addToHistory(url, title) {
+    const item = {url, title};
+    if (!history.some(h => h.url === url)) {
+        history.unshift(item);
+        localStorage.setItem('linkHistory', JSON.stringify(history));
+        updateHistoryDrawer();
+    }
+}
+
+// Function to update history drawer
+function updateHistoryDrawer() {
+    const historyList = document.getElementById('historyList');
+    historyList.innerHTML = '';
+    history.forEach(item => {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = item.url;
+        a.target = '_blank';
+        a.textContent = item.title;
+        li.appendChild(a);
+        historyList.appendChild(li);
+    });
+}
+
+// Event listener for keydown events
+document.addEventListener('keydown', function(event) {
+    switch(event.key) {
+        case 'ArrowLeft':
+            currentIndex = (currentIndex - 1 + resources.length) % resources.length;
+            updateDisplay();
+            break;
+        case 'ArrowRight':
+            currentIndex = (currentIndex + 1) % resources.length;
+            updateDisplay();
+            break;
+        case 'Enter':
+            if(resources[currentIndex]) {
+                const url = resources[currentIndex].url || `https://news.ycombinator.com/item?id=${resources[currentIndex].id}`;
+                addToHistory(url, resources[currentIndex].title);
+                window.open(url, '_blank');
+            }
+            break;
+    }
+});
+
+// Event listener for history icon
+document.getElementById('historyIcon').addEventListener('click', function() {
+    document.getElementById('historyDrawer').classList.toggle('open');
+    document.getElementById('overlay').classList.toggle('active');
+});
+
+// Event listener to close drawer when clicking outside
+document.getElementById('overlay').addEventListener('click', function() {
+    document.getElementById('historyDrawer').classList.remove('open');
+    this.classList.remove('active');
+});
+
+// Show wizard if it hasn't been shown before
+if (!hasShownWizard) {
+    document.getElementById('wizard').style.display = 'block';
+    document.getElementById('overlay').classList.add('active');
+}
+
+// Event listener for wizard button
+document.getElementById('startWizard').addEventListener('click', function() {
+    document.getElementById('wizard').style.display = 'none';
+    document.getElementById('overlay').classList.remove('active');
+    localStorage.setItem('hasShownWizard', 'true');
+});
+
+// Initial load
+fetchHackerNewsTopStories();
+updateHistoryDrawer();
+updateHistoryIcon();
+</script>
+
+</body>
+</html>
